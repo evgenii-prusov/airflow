@@ -26,7 +26,6 @@ import pytest
 
 from airflow.configuration import ensure_secrets_loaded
 from airflow.exceptions import (
-    AirflowDuplicateVariableKeyException,
     AirflowException,
     AirflowFileParseException,
     ConnectionNotUnique,
@@ -54,6 +53,7 @@ class TestFileParsers:
         [
             ("AA", 'Invalid line format. The line should contain at least one equal sign ("=")'),
             ("=", "Invalid line format. Key is empty."),
+            ("A=", "Invalid line format. Value is empty."),
         ],
     )
     def test_env_file_invalid_format(self, content, expected_message):
@@ -81,12 +81,10 @@ class TestLoadVariables:
         [
             ("", {}),
             ("KEY=AAA", {"KEY": "AAA"}),
+            ("KEY=A\nKEY=B", {"KEY": "B"}),
             ("KEY_A=AAA\nKEY_B=BBB", {"KEY_A": "AAA", "KEY_B": "BBB"}),
             ("KEY_A=AAA\n # AAAA\nKEY_B=BBB", {"KEY_A": "AAA", "KEY_B": "BBB"}),
             ("\n\n\n\nKEY_A=AAA\n\n\n\n\nKEY_B=BBB\n\n\n", {"KEY_A": "AAA", "KEY_B": "BBB"}),
-            ("KEY_A=", {"KEY_A": ""}),
-            ("KEY_A=AAA\nKEY_B=", {"KEY_A": "AAA", "KEY_B": ""}),
-            ("KEY_A=\nKEY_B=BBB", {"KEY_A": "", "KEY_B": "BBB"}),
         ],
     )
     def test_env_file_should_load_variables(self, file_content, expected_variables):
@@ -94,16 +92,6 @@ class TestLoadVariables:
             variables = local_filesystem.load_variables("a.env")
             assert expected_variables == variables
 
-    @pytest.mark.parametrize(
-        "content, expected_message",
-        [
-            ("AA=A\nAA=B", "Multiple values found for key 'AA' in 'a.env' file"),
-        ],
-    )
-    def test_env_file_invalid_logic(self, content, expected_message):
-        with mock_local_file(content):
-            with pytest.raises(AirflowDuplicateVariableKeyException, match=re.escape(expected_message)):
-                local_filesystem.load_variables("a.env")
 
     @pytest.mark.parametrize(
         "file_content, expected_variables",

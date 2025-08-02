@@ -22,14 +22,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections import defaultdict
 from inspect import signature
 from json import JSONDecodeError
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from airflow.exceptions import (
-    AirflowDuplicateVariableKeyException,
     AirflowException,
     AirflowFileParseException,
     ConnectionNotUnique,
@@ -55,7 +53,7 @@ def get_connection_parameter_names() -> set[str]:
     return {k for k in signature(Connection.__init__).parameters.keys() if k != "self"}
 
 
-def _parse_env_file(file_path: str) -> tuple[dict[str, list[str]], list[FileSyntaxError]]:
+def _parse_env_file(file_path: str) -> tuple[dict[str, str], list[FileSyntaxError]]:
     """
     Parse a file in the ``.env`` format.
 
@@ -64,12 +62,12 @@ def _parse_env_file(file_path: str) -> tuple[dict[str, list[str]], list[FileSynt
         MY_CONN_ID=my-conn-type://my-login:my-pa%2Fssword@my-host:5432/my-schema?param1=val1&param2=val2
 
     :param file_path: The location of the file that will be processed.
-    :return: Tuple with mapping of key and list of values and list of syntax errors
+    :return: Tuple with mapping of key and value (last occurrence wins) and list of syntax errors
     """
     with open(file_path) as f:
         content = f.read()
 
-    secrets: dict[str, list[str]] = defaultdict(list)
+    secrets: dict[str, str] = {}
     errors: list[FileSyntaxError] = []
     for line_no, line in enumerate(content.splitlines(), 1):
         if not line:
@@ -98,7 +96,18 @@ def _parse_env_file(file_path: str) -> tuple[dict[str, list[str]], list[FileSynt
                 )
             )
             continue
-        secrets[key].append(value)
+
+        if not value:
+            errors.append(
+                FileSyntaxError(
+                    line_no=line_no,
+                    message="Invalid line format. Value is empty.",
+                )
+            )
+            continue
+
+        # Like JSON/YAML, last occurrence wins for duplicate keys
+        secrets[key] = value
     return secrets, errors
 
 
@@ -167,7 +176,7 @@ def _parse_secret_file(file_path: str) -> dict[str, Any]:
 
     log.debug("Parsing file: %s", file_path)
 
-    ext = file_path.rsplit(".", 2)[-1].lower()
+    ext = Path(file_path).suffix.lstrip('.').lower()
 
     if ext not in FILE_PARSERS:
         raise UnsupportedSecretFileFormatError(
@@ -236,25 +245,8 @@ def load_variables(file_path: str) -> dict[str, str]:
     log.debug("Loading variables from a text file")
 
     secrets = _parse_secret_file(file_path)
-
-    # Determine a file format to handle lists correctly
-    ext = Path(file_path).suffix.lower().lstrip(".")
-    is_env_file = ext == "env"
-
-    variables = {}
-    for key, secret_values in secrets.items():
-        if is_env_file and isinstance(secret_values, list):
-            # Only ENV files: Check for duplicate keys
-            if len(secret_values) > 1:
-                raise AirflowDuplicateVariableKeyException(
-                    msg=f"Multiple values found for key '{key}' in '{file_path}' file", file_path=file_path
-                )
-            variables[key] = secret_values[0]  # Extract single value
-        else:
-            # JSON/YAML: Use value directly (could be list, dict, string, etc.)
-            variables[key] = secret_values
-    log.debug("Loaded %d variables: ", len(variables))
-    return variables
+    log.debug("Loaded %d variables: ", len(secrets))
+    return secrets
 
 
 def load_connections_dict(file_path: str) -> dict[str, Any]:
