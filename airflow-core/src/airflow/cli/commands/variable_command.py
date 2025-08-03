@@ -20,13 +20,12 @@
 from __future__ import annotations
 
 import json
-import os
 
 from sqlalchemy import select
 
 from airflow.cli.simple_table import AirflowConsole
 from airflow.cli.utils import print_export_output
-from airflow.exceptions import AirflowDuplicateVariableKeyException
+from airflow.exceptions import AirflowFileParseException, UnsupportedSecretFileFormatError
 from airflow.models import Variable
 from airflow.secrets.local_filesystem import load_variables
 from airflow.utils import cli as cli_utils
@@ -80,14 +79,17 @@ def variables_delete(args):
 @provide_session
 def variables_import(args, session):
     """Import variables from a given file."""
-    if not os.path.exists(args.file):
-        raise SystemExit("Missing variables file.")
-
     try:
         # Use load_variables which supports JSON, YAML, and ENV formats
         var_dict = load_variables(args.file)
-    except AirflowDuplicateVariableKeyException as e:
-        raise SystemExit(f"Failed to import variables: {e}")
+    except FileNotFoundError as e:
+        raise SystemExit(f"Error: {e}")
+    except UnsupportedSecretFileFormatError as e:
+        raise SystemExit(f"Error: {e}")
+    except AirflowFileParseException as e:
+        # Handle specific parsing errors, including JSONDecodeError
+        raise SystemExit(f"Error parsing file: {e}")
+
     except Exception as e:
         # Check if it's a specific format error
         if "Unsupported file format" in str(e):

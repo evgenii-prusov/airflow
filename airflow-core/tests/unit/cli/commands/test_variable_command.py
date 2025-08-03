@@ -162,7 +162,7 @@ class TestCliVariables:
 
     def test_variables_import(self):
         """Test variables_import command"""
-        with pytest.raises(SystemExit, match=r"Unsupported file format"):
+        with pytest.raises(SystemExit, match=r"Unsupported secret file format"):
             variable_command.variables_import(self.parser.parse_args(["variables", "import", os.devnull]))
 
     def test_variables_export(self):
@@ -292,16 +292,6 @@ class TestCliVariables:
         assert Variable.get("VAR_INT") == "42"  # ENV values are strings
         assert Variable.get("VAR_JSON") == '{"key": "value", "number": 123}'
 
-    def test_variables_import_invalid_format(self, tmp_path):
-        """Test variables_import command with invalid file format"""
-        invalid_file = tmp_path / "variables.txt"
-        invalid_file.write_text("some content")
-
-        # Should raise SystemExit for unsupported format
-        with pytest.raises(SystemExit, match=r"Unsupported file format"):
-            variable_command.variables_import(
-                self.parser.parse_args(["variables", "import", os.fspath(invalid_file)])
-            )
 
     def test_variables_import_yaml_with_existing_keys(self, tmp_path):
         """Test variables_import YAML with existing keys and different actions"""

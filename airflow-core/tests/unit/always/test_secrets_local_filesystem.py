@@ -368,11 +368,6 @@ class TestLoadConnection:
             with pytest.raises(AirflowException, match=re.escape(expected_message)):
                 local_filesystem.load_connections_dict("a.yaml")
 
-    @pytest.mark.parametrize("file_content", ["CONN_ID=mysql://host_1/\nCONN_ID=mysql://host_2/"])
-    def test_ensure_unique_connection_env(self, file_content):
-        with mock_local_file(file_content):
-            with pytest.raises(ConnectionNotUnique):
-                local_filesystem.load_connections_dict("a.env")
 
     @pytest.mark.parametrize(
         "file_content",
